@@ -5,6 +5,10 @@ USPTO Patent Search MCP Server
 Provides tools for searching and retrieving patent data from Google Patents API.
 Includes search_patents, get_patent_details, search_by_assignee, and
 search_by_classification tools.
+
+Usage:
+  python3 server.py                    # Free tier (50 calls/instance)
+  python3 server.py --pro-key PROL_XXX  # Pro tier (unlimited)
 """
 
 import json
@@ -20,6 +24,45 @@ from mcp.types import Tool, TextContent
 
 GOOGLE_PATENTS_API = "https://patents.google.com/api/patents"
 USPTO_API_BASE = "https://developer.uspto.gov/ds-api/"
+
+# ── Rate Limiting & Pro Key ────────────────────────────────────────────────
+
+FREE_LIMIT = 50
+PRO_KEYS = {"PROL_AGENTPAY_DEMO": "demo"}  # Demo key for testing
+
+# Parse --pro-key from command line
+PRO_KEY = None
+for i, arg in enumerate(sys.argv):
+    if arg == "--pro-key" and i + 1 < len(sys.argv):
+        PRO_KEY = sys.argv[i + 1]
+        break
+
+IS_PRO = PRO_KEY in PRO_KEYS
+call_counter = 0
+
+STRIPE_LINK = "https://buy.stripe.com/7sYeVf6Pl2Ju1jqdjl1oI0n"  # $19/mo (Patent Search MCP Pro)
+
+def check_rate_limit():
+    """Check if free tier has exceeded limit. Returns error dict or None."""
+    global call_counter
+    if IS_PRO:
+        return None
+    call_counter += 1
+    if call_counter > FREE_LIMIT:
+        remaining = call_counter - FREE_LIMIT
+        return {
+            "error": f"Free tier limit reached ({FREE_LIMIT} calls). Upgrade to Pro for unlimited access.",
+            "isError": True,
+            "next_steps": [
+                f"Purchase Pro at {STRIPE_LINK} ($19/mo, unlimited)",
+                "Restart the server to reset the free counter",
+                "Use --pro-key PROL_XXX to run in Pro mode"
+            ],
+            "calls_used": call_counter,
+            "limit": FREE_LIMIT,
+            "over_by": remaining
+        }
+    return None
 
 # ── HTTP Client ───────────────────────────────────────────────────────────
 
@@ -258,6 +301,10 @@ async def list_tools() -> list[Tool]:
 async def call_tool(
     name: str, arguments: dict[str, Any]
 ) -> list[TextContent]:
+    # Rate limit check
+    limit_check = check_rate_limit()
+    if limit_check:
+        return [TextContent(type="text", text=json.dumps(limit_check, indent=2))]
     try:
         if name == "search_patents":
             query = arguments.get("query", "")
