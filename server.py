@@ -17,7 +17,7 @@ import sys
 from typing import Any
 
 import httpx
-from mcp.server import Server, stdio_server
+from mcp.server.lowlevel import Server, stdio_server
 from mcp.types import Tool, TextContent
 
 # ── Constants ─────────────────────────────────────────────────────────────
